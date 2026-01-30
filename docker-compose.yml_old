@@ -1,0 +1,48 @@
+version: '3.8'
+
+services:
+  db:
+    image: postgres:15
+    container_name: postgres_db
+    environment:
+      POSTGRES_DB: education_platform
+      POSTGRES_USER: user
+      POSTGRES_PASSWORD: password
+    volumes:
+      - ./sql_database/01_schema.sql:/docker-entrypoint-initdb.d/01_schema.sql
+      - ./sql_database/02_test_data.sql:/docker-entrypoint-initdb.d/02_test_data.sql
+    ports:
+      - "5432:5432"
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U user -d education_platform"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  app:
+    build: .
+    container_name: comparison_app
+    depends_on:
+      db:
+        condition: service_healthy
+    environment:
+      - DB_HOST=db
+      - DB_NAME=education_platform
+      - DB_USER=user
+      - DB_PASSWORD=password
+      - BACK4APP_APP_ID=YOUR_APP_ID_HERE
+      - BACK4APP_API_KEY=YOUR_API_KEY_HERE
+    command: >
+      bash -c "
+        echo 'Waiting for database to be ready...' &&
+        # Replace placeholder credentials in the comparison tool
+        sed -i 's/host='"'your_host'"'/'host='	'${DB_HOST}'	'/' comparison_tool.py &&
+        sed -i 's/database='	'education_platform'	'/'database='	'${DB_NAME}'	'/' comparison_tool.py &&
+        sed -i 's/user='	'your_username'	'/'user='	'${DB_USER}'	'/' comparison_tool.py &&
+        sed -i 's/password='	'your_password'	'/'password='	'${DB_PASSWORD}'	'/' comparison_tool.py &&
+        sed -i 's/'	'YOUR_APP_ID'	'/'	'${BACK4APP_APP_ID}'	'/' comparison_tool.py &&
+        sed -i 's/'	'YOUR_API_KEY'	'/'	'${BACK4APP_API_KEY}'	'/' comparison_tool.py &&
+        
+        echo 'Running the comparison tool...' &&
+        python comparison_tool.py
+      "

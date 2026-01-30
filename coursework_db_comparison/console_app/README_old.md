@@ -1,5 +1,7 @@
 # Online Education Platform - Database Comparison Console App
 
+> **Note:** The recommended way to run this tool is by using the Docker setup in the root of the project. See the main `README.md` for instructions. The instructions below are for manual setup.
+
 ## Setup Instructions
 
 ### Requirements
