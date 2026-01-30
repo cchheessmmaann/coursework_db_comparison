@@ -1,10 +1,4 @@
 -- ============================================================
--- Online Education Platform Database Schema
--- Database: education_platform
--- DBMS: PostgreSQL
--- ============================================================
-
--- ============================================================
 -- 1. USERS (Base table for Students and Teachers)
 -- ============================================================
 CREATE TABLE users (
@@ -246,10 +240,6 @@ CREATE TABLE review_comments (
 
 CREATE INDEX idx_comments_review ON review_comments(review_id);
 CREATE INDEX idx_comments_commenter ON review_comments(commenter_id);
-
--- ============================================================
--- Views for common business logic
--- ============================================================
 
 -- View: Student Course Progress
 CREATE VIEW v_student_course_progress AS

@@ -1,14 +1,4 @@
 -- ============================================================
--- Test Data Population Script
--- Online Education Platform Database
--- ============================================================
-
--- Clear existing data (use with caution!)
--- TRUNCATE review_comments, homework_reviews, homework_submissions, homeworks, 
---         lesson_progress, quizzes, lessons, modules, course_enrollments, 
---         courses, teachers, students, users CASCADE;
-
--- ============================================================
 -- 1. Insert Users
 -- ============================================================
 

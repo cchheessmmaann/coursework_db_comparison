@@ -1,13 +1,6 @@
--- ============================================================
--- Business Logic Queries
--- Online Education Platform Database
--- These queries address key business requirements
--- ============================================================
 
--- ============================================================
 -- QUERY 1: Find students not submitting more than 2 homeworks in a course
 -- This identifies at-risk students who may need intervention
--- ============================================================
 -- Business requirement: Monitor students who are falling behind on assignments
 SELECT 
     s.student_id,
@@ -34,10 +27,8 @@ HAVING COUNT(DISTINCT h.homework_id) > 0
     AND (COUNT(DISTINCT h.homework_id) - COUNT(DISTINCT hs.submission_id)) > 2
 ORDER BY missing_submissions DESC, c.title;
 
--- ============================================================
 -- QUERY 2: Calculate course completion rate and identify lagging students
 -- Shows progress for each student across course structure
--- ============================================================
 -- Business requirement: Track student progress and identify those needing support
 SELECT 
     ce.enrollment_id,
@@ -67,10 +58,8 @@ LEFT JOIN lesson_progress lp ON l.lesson_id = lp.lesson_id AND s.student_id = lp
 GROUP BY ce.enrollment_id, s.student_id, u.first_name, u.last_name, c.course_id, c.title, c.difficulty_level, ce.status, ce.enrollment_date
 ORDER BY c.course_id, completion_percentage, student_name;
 
--- ============================================================
 -- QUERY 3: Homework review cycle analysis
 -- Shows homework submissions and their review status
--- ============================================================
 -- Business requirement: Track homework grading pipeline and feedback cycles
 SELECT 
     h.homework_id,
@@ -99,10 +88,8 @@ LEFT JOIN homework_reviews hr ON hs.submission_id = hr.submission_id
 GROUP BY h.homework_id, h.title, l.lesson_id, l.title, m.title, c.title
 ORDER BY c.course_id, h.homework_id;
 
--- ============================================================
 -- QUERY 4: Teacher workload analysis
 -- Shows teaching load and grading responsibilities
--- ============================================================
 -- Business requirement: Monitor teacher workload and balance course assignments
 SELECT 
     t.teacher_id,
@@ -129,10 +116,8 @@ LEFT JOIN homework_reviews hr ON hs.submission_id = hr.submission_id AND t.teach
 GROUP BY t.teacher_id, u.first_name, u.last_name, t.specialization
 ORDER BY courses_teaching DESC, total_students DESC;
 
--- ============================================================
 -- QUERY 5: Course analytics and performance metrics
 -- Provides comprehensive course statistics
--- ============================================================
 -- Business requirement: Monitor course quality and student outcomes
 SELECT 
     c.course_id,
@@ -170,10 +155,8 @@ GROUP BY c.course_id, c.title, t.teacher_id, u_teacher.first_name, u_teacher.las
          c.category, c.difficulty_level, c.created_at
 ORDER BY enrolled_students DESC, c.created_at DESC;
 
--- ============================================================
 -- QUERY 6: Quiz performance analysis (bonus - extends original 5)
 -- Identifies students struggling with assessments
--- ============================================================
 -- Business requirement: Monitor quiz performance to identify knowledge gaps
 SELECT 
     q.quiz_id,

@@ -1,273 +1,315 @@
-/*
-Back4app Cloud Code Functions
-Online Education Platform - Equivalent Business Logic
 
-These functions implement the same business logic as SQL queries
-but using Back4app's Cloud Code (Node.js) environment.
-*/
 
-const Parse = require('parse/node');
+// ФУНКЦИЯ 1:
+// Найти студентов, которые пропустили домашние задания
+// Бизнес-цель: выявить студентов в риске для контакта
+// Эквивалент SQL Query 1
 
-// ============================================================
-// CLOUD FUNCTION 1: Get Students Missing Homeworks
-// ============================================================
 Parse.Cloud.define('getStudentsMissingHomeworks', async (request) => {
-  const minMissing = request.params.minMissing || 2;
-  
   try {
-    // Query all course enrollments with student info
-    const enrollments = await new Parse.Query('CourseEnrollment')
-      .include('student', 'course')
-      .limit(1000)
-      .find({ useMasterKey: true });
+    const students = await new Parse.Query('Student')
+      .include('user')
+      .find({useMasterKey: true});
+    
+    console.log(`Найдено ${students.length} студентов`);
     
     const results = [];
     
-    for (const enrollment of enrollments) {
-      const studentId = enrollment.get('student').id;
-      const courseId = enrollment.get('course').id;
+    for (const student of students) {
+      const enrollments = await new Parse.Query('CourseEnrollment')
+        .equalTo('student', student)
+        .include('course')
+        .find({useMasterKey: true});
       
-      // Get homeworks for this course
-      const homeworks = await new Parse.Query('Homework')
-        .where('course', '==', courseId)
-        .select('objectId')
-        .find({ useMasterKey: true });
+      console.log(`Студент ${student.id}: ${enrollments.length} курсов`);
       
-      const homeworkIds = homeworks.map(h => h.id);
+      let missedCount = 0;
+      let missedHomeworkIds = [];
       
-      // Get submissions for this student
-      const submissions = await new Parse.Query('HomeworkSubmission')
-        .where('homework', 'in', homeworkIds)
-        .where('student', '==', studentId)
-        .select('objectId')
-        .find({ useMasterKey: true });
-      
-      const missing = homeworkIds.length - submissions.length;
-      
-      if (missing > minMissing) {
-        results.push({
-          studentId: studentId,
-          studentName: enrollment.get('student').get('name'),
-          courseId: courseId,
-          courseTitle: enrollment.get('course').get('title'),
-          totalHomeworks: homeworkIds.length,
-          submittedHomeworks: submissions.length,
-          missingSubmissions: missing,
-          submissionRate: ((submissions.length / homeworkIds.length) * 100).toFixed(2)
-        });
-      }
-    }
-    
-    return results.sort((a, b) => b.missingSubmissions - a.missingSubmissions);
-  } catch (error) {
-    throw new Error('Failed to get students with missing homeworks: ' + error.message);
-  }
-});
-
-// ============================================================
-// CLOUD FUNCTION 2: Get Course Completion Rate
-// ============================================================
-Parse.Cloud.define('getCourseCompletion', async (request) => {
-  try {
-    // Query all course enrollments
-    const enrollments = await new Parse.Query('CourseEnrollment')
-      .include('student', 'course')
-      .limit(1000)
-      .find({ useMasterKey: true });
-    
-    const results = [];
-    
-    for (const enrollment of enrollments) {
-      const studentId = enrollment.get('student').id;
-      const courseId = enrollment.get('course').id;
-      
-      // Get all lessons in course
-      const modules = await new Parse.Query('Module')
-        .where('course', '==', courseId)
-        .find({ useMasterKey: true });
-      
-      let totalLessons = 0;
-      let completedLessons = 0;
-      let totalTime = 0;
-      
-      for (const module of modules) {
-        const lessons = await new Parse.Query('Lesson')
-          .where('module', '==', module.id)
-          .find({ useMasterKey: true });
+      for (const enrollment of enrollments) {
+        const course = enrollment.get('course');
         
-        totalLessons += lessons.length;
+        const modules = await new Parse.Query('Module')
+          .equalTo('course', course)
+          .find({useMasterKey: true});
         
-        for (const lesson of lessons) {
-          const progress = await new Parse.Query('LessonProgress')
-            .where('lesson', '==', lesson.id)
-            .where('student', '==', studentId)
-            .first({ useMasterKey: true });
+        for (const module of modules) {
+          const lessons = await new Parse.Query('Lesson')
+            .equalTo('module', module)
+            .find({useMasterKey: true});
           
-          if (progress && progress.get('status') === 'Completed') {
-            completedLessons++;
-          }
-          
-          if (progress && progress.get('timeSpentMinutes')) {
-            totalTime += progress.get('timeSpentMinutes');
+          for (const lesson of lessons) {
+            const homeworks = await new Parse.Query('Homework')
+              .equalTo('lesson', lesson)
+              .find({useMasterKey: true});
+            
+            for (const hw of homeworks) {
+              const submissions = await new Parse.Query('HomeworkSubmission')
+                .equalTo('homework', hw)
+                .equalTo('student', student)
+                .count({useMasterKey: true});
+              
+              if (submissions === 0) {
+                missedCount++;
+                missedHomeworkIds.push(hw.id);
+              }
+            }
           }
         }
       }
       
-      if (totalLessons > 0) {
+      if (missedCount > 0) {
+        const user = student.get('user');
         results.push({
-          enrollmentId: enrollment.id,
-          studentId: studentId,
-          studentName: enrollment.get('student').get('name'),
-          courseId: courseId,
-          courseTitle: enrollment.get('course').get('title'),
-          difficultyLevel: enrollment.get('course').get('difficultyLevel'),
-          totalLessons: totalLessons,
-          completedLessons: completedLessons,
-          completionPercentage: ((completedLessons / totalLessons) * 100).toFixed(2),
-          avgTimePerLesson: (totalTime / totalLessons).toFixed(2),
-          enrollmentStatus: enrollment.get('status')
+          studentId: student.id,
+          userId: user.id,
+          email: user.get('email'),
+          name: user.get('first_name') + ' ' + user.get('last_name'),
+          missedHomeworkCount: missedCount,
+          missedHomeworkIds: missedHomeworkIds,
+          enrolledInCourses: enrollments.length
         });
       }
     }
     
-    return results.sort((a, b) => 
-      b.completionPercentage - a.completionPercentage || 
-      b.studentId.localeCompare(a.studentId)
-    ).slice(0, 20);
+    results.sort((a, b) => b.missedHomeworkCount - a.missedHomeworkCount);
+    
+    return {
+      status: 'success',
+      data: results,
+      total: results.length,
+      timestamp: new Date()
+    };
   } catch (error) {
-    throw new Error('Failed to get course completion: ' + error.message);
+    console.error('Ошибка в getStudentsMissingHomeworks:', error);
+    throw new Parse.Error(Parse.Error.SCRIPT_FAILED, 
+      'Не удалось получить студентов: ' + error.message);
   }
 });
 
-// ============================================================
-// CLOUD FUNCTION 3: Homework Review Cycle Analysis
-// ============================================================
+
+// ФУНКЦИЯ 2: 
+// Процент завершения каждого курса
+// Бизнес-цель: аналитика популярности и завершаемости курсов
+// Эквивалент SQL Query 2
+
+Parse.Cloud.define('getCourseCompletion', async (request) => {
+  try {
+    const courses = await new Parse.Query('Course')
+      .include('instructor')
+      .find({useMasterKey: true});
+    
+    const results = [];
+    
+    for (const course of courses) {
+      const enrollments = await new Parse.Query('CourseEnrollment')
+        .equalTo('course', course)
+        .include('student')
+        .find({useMasterKey: true});
+      
+      console.log(`Курс "${course.get('title')}": ${enrollments.length} студентов`);
+      
+      let completedCount = 0;
+      
+      for (const enrollment of enrollments) {
+        const student = enrollment.get('student');
+        
+        const modules = await new Parse.Query('Module')
+          .equalTo('course', course)
+          .find({useMasterKey: true});
+        
+        let totalLessons = 0;
+        let completedLessons = 0;
+        
+        for (const module of modules) {
+          const lessons = await new Parse.Query('Lesson')
+            .equalTo('module', module)
+            .find({useMasterKey: true});
+          
+          for (const lesson of lessons) {
+            totalLessons++;
+            
+            const progress = await new Parse.Query('LessonProgress')
+              .equalTo('student', student)
+              .equalTo('lesson', lesson)
+              .first({useMasterKey: true});
+            
+            if (progress && progress.get('completion_percentage') >= 100) {
+              completedLessons++;
+            }
+          }
+        }
+        
+        if (totalLessons > 0 && completedLessons === totalLessons) {
+          completedCount++;
+        }
+      }
+      
+      const completionRate = enrollments.length > 0 
+        ? (completedCount / enrollments.length * 100).toFixed(2)
+        : 0;
+      
+      const instructor = course.get('instructor');
+      results.push({
+        courseId: course.id,
+        title: course.get('title'),
+        instructor: instructor ? instructor.get('user').get('first_name') : 'Unknown',
+        totalEnrolled: enrollments.length,
+        completed: completedCount,
+        completionRate: parseFloat(completionRate),
+        status: course.get('status')
+      });
+    }
+    
+    results.sort((a, b) => b.completionRate - a.completionRate);
+    
+    return {
+      status: 'success',
+      data: results,
+      totalCourses: results.length,
+      averageCompletion: (results.reduce((sum, r) => sum + r.completionRate, 0) / results.length).toFixed(2)
+    };
+  } catch (error) {
+    console.error('Ошибка в getCourseCompletion:', error);
+    throw new Parse.Error(Parse.Error.SCRIPT_FAILED, error.message);
+  }
+});
+
+// ФУНКЦИЯ 3: 
+// Статистика по проверкам домашних заданий
+// Бизнес-цель: видеть эффективность домашних (процент прохождения)
+// Эквивалент SQL Query 3
+
 Parse.Cloud.define('getHomeworkReviewStats', async (request) => {
   try {
+    // Получить все домашние задания
     const homeworks = await new Parse.Query('Homework')
-      .include('lesson', 'course')
-      .limit(1000)
-      .find({ useMasterKey: true });
+      .include('lesson')
+      .find({useMasterKey: true});
     
     const results = [];
     
     for (const homework of homeworks) {
-      // Get submissions for this homework
-      const submissions = await new Parse.Query('HomeworkSubmission')
-        .where('homework', '==', homework.id)
-        .find({ useMasterKey: true });
+      const lesson = homework.get('lesson');
       
-      let gradedCount = 0;
-      let lateCount = 0;
-      let totalScore = 0;
-      let scoreCount = 0;
+      const submissions = await new Parse.Query('HomeworkSubmission')
+        .equalTo('homework', homework)
+        .find({useMasterKey: true});
+      
+      let reviewedCount = 0;
+      let passedCount = 0;
+      let gradesSum = 0;
       
       for (const submission of submissions) {
-        // Get reviews for this submission
-        const reviews = await new Parse.Query('HomeworkReview')
-          .where('submission', '==', submission.id)
-          .find({ useMasterKey: true });
+        const review = await new Parse.Query('HomeworkReview')
+          .equalTo('submission', submission)
+          .first({useMasterKey: true});
         
-        if (reviews.length > 0 && reviews[0].get('status') === 'Approved') {
-          gradedCount++;
-        }
-        
-        if (submission.get('isLate')) {
-          lateCount++;
-        }
-        
-        if (reviews.length > 0 && reviews[0].get('score')) {
-          totalScore += reviews[0].get('score');
-          scoreCount++;
+        if (review) {
+          reviewedCount++;
+          const grade = review.get('grade');
+          
+          if (grade !== null && grade !== undefined) {
+            gradesSum += grade;
+            
+            if (grade >= 70) {
+              passedCount++;
+            }
+          }
         }
       }
       
+      // Вычислить статистику
+      const passRate = reviewedCount > 0 
+        ? (passedCount / reviewedCount * 100).toFixed(2)
+        : 0;
+      
+      const averageGrade = reviewedCount > 0
+        ? (gradesSum / reviewedCount).toFixed(2)
+        : 0;
+      
       results.push({
         homeworkId: homework.id,
-        homeworkTitle: homework.get('title'),
-        courseTitle: homework.get('course').get('title'),
+        title: homework.get('title'),
+        lesson: lesson ? lesson.get('title') : 'Unknown',
         totalSubmissions: submissions.length,
-        gradedCount: gradedCount,
-        lateSubmissions: lateCount,
-        avgScore: scoreCount > 0 ? (totalScore / scoreCount).toFixed(2) : null,
-        gradingCompletionRate: submissions.length > 0 ? 
-          ((gradedCount / submissions.length) * 100).toFixed(2) : 0
+        reviewed: reviewedCount,
+        passed: passedCount,
+        passRate: parseFloat(passRate),
+        averageGrade: parseFloat(averageGrade),
+        dueDate: homework.get('due_date')
       });
     }
     
-    return results;
+    return {
+      status: 'success',
+      data: results,
+      totalHomeworks: results.length,
+      averagePassRate: (results.reduce((sum, r) => sum + r.passRate, 0) / results.length).toFixed(2)
+    };
   } catch (error) {
-    throw new Error('Failed to get homework review stats: ' + error.message);
+    console.error('Ошибка в getHomeworkReviewStats:', error);
+    throw new Parse.Error(Parse.Error.SCRIPT_FAILED, error.message);
   }
 });
 
-// ============================================================
-// CLOUD FUNCTION 4: Teacher Workload Analysis
-// ============================================================
+// ФУНКЦИЯ 4: getTeacherWorkload
+// Нагрузка преподавателей (сколько курсов, сколько работ на проверке)
+// Бизнес-цель: распределить нагрузку, выявить перегруженных учителей
+// Эквивалент SQL Query 4
+
 Parse.Cloud.define('getTeacherWorkload', async (request) => {
   try {
     const teachers = await new Parse.Query('Teacher')
       .include('user')
-      .limit(1000)
-      .find({ useMasterKey: true });
+      .find({useMasterKey: true});
     
     const results = [];
     
     for (const teacher of teachers) {
-      const teacherId = teacher.id;
+      const user = teacher.get('user');
       
-      // Get courses taught
       const courses = await new Parse.Query('Course')
-        .where('instructor', '==', teacher)
-        .find({ useMasterKey: true });
+        .equalTo('instructor', teacher)
+        .find({useMasterKey: true});
       
-      let totalStudents = new Set();
+      let totalStudents = 0;
       let pendingReviews = 0;
-      let totalScore = 0;
-      let scoreCount = 0;
       
       for (const course of courses) {
-        // Get enrollments
         const enrollments = await new Parse.Query('CourseEnrollment')
-          .where('course', '==', course.id)
-          .find({ useMasterKey: true });
+          .equalTo('course', course)
+          .count({useMasterKey: true});
         
-        enrollments.forEach(e => totalStudents.add(e.get('student').id));
+        totalStudents += enrollments;
         
-        // Get homework reviews for this course
+        // Работы на проверке в этом курсе
         const modules = await new Parse.Query('Module')
-          .where('course', '==', course.id)
-          .find({ useMasterKey: true });
+          .equalTo('course', course)
+          .find({useMasterKey: true});
         
         for (const module of modules) {
           const lessons = await new Parse.Query('Lesson')
-            .where('module', '==', module.id)
-            .find({ useMasterKey: true });
+            .equalTo('module', module)
+            .find({useMasterKey: true});
           
           for (const lesson of lessons) {
             const homeworks = await new Parse.Query('Homework')
-              .where('lesson', '==', lesson.id)
-              .find({ useMasterKey: true });
+              .equalTo('lesson', lesson)
+              .find({useMasterKey: true});
             
-            for (const homework of homeworks) {
+            for (const hw of homeworks) {
               const submissions = await new Parse.Query('HomeworkSubmission')
-                .where('homework', '==', homework.id)
-                .find({ useMasterKey: true });
+                .equalTo('homework', hw)
+                .find({useMasterKey: true});
               
               for (const submission of submissions) {
-                const reviews = await new Parse.Query('HomeworkReview')
-                  .where('submission', '==', submission.id)
-                  .where('teacher', '==', teacher)
-                  .find({ useMasterKey: true });
+                const review = await new Parse.Query('HomeworkReview')
+                  .equalTo('submission', submission)
+                  .count({useMasterKey: true});
                 
-                for (const review of reviews) {
-                  if (review.get('status') !== 'Approved') {
-                    pendingReviews++;
-                  }
-                  if (review.get('score')) {
-                    totalScore += review.get('score');
-                    scoreCount++;
-                  }
+                if (review === 0) {
+                  pendingReviews++;
                 }
               }
             }
@@ -276,99 +318,157 @@ Parse.Cloud.define('getTeacherWorkload', async (request) => {
       }
       
       results.push({
-        teacherId: teacherId,
-        teacherName: teacher.get('user').get('name'),
-        specialization: teacher.get('specialization'),
-        coursesTaught: courses.length,
-        totalStudents: totalStudents.size,
+        teacherId: teacher.id,
+        email: user.get('email'),
+        name: user.get('first_name') + ' ' + user.get('last_name'),
+        coursesTeaching: courses.length,
+        totalStudents: totalStudents,
         pendingReviews: pendingReviews,
-        avgGradeGiven: scoreCount > 0 ? (totalScore / scoreCount).toFixed(2) : null
+        averageStudentsPerCourse: courses.length > 0 
+          ? (totalStudents / courses.length).toFixed(1)
+          : 0
       });
     }
     
-    return results.sort((a, b) => b.coursesTaught - a.coursesTaught);
+    // Сортировать по количеству pending работ (перегруженные первыми)
+    results.sort((a, b) => b.pendingReviews - a.pendingReviews);
+    
+    return {
+      status: 'success',
+      data: results,
+      totalTeachers: results.length,
+      totalPendingReviews: results.reduce((sum, r) => sum + r.pendingReviews, 0)
+    };
   } catch (error) {
-    throw new Error('Failed to get teacher workload: ' + error.message);
+    console.error('Ошибка в getTeacherWorkload:', error);
+    throw new Parse.Error(Parse.Error.SCRIPT_FAILED, error.message);
   }
 });
 
-// ============================================================
-// CLOUD FUNCTION 5: Course Analytics
-// ============================================================
+// ФУНКЦИЯ 5: getCourseAnalytics
+// Полная аналитика курса (со всеми метриками)
+// Бизнес-цель: dashboard для администраторов/преподавателей
+// Эквивалент SQL Query 5
+
 Parse.Cloud.define('getCourseAnalytics', async (request) => {
   try {
-    const courses = await new Parse.Query('Course')
-      .include('instructor')
-      .limit(1000)
-      .find({ useMasterKey: true });
+    const courseId = request.params.courseId;
     
-    const results = [];
-    
-    for (const course of courses) {
-      const courseId = course.id;
-      
-      // Get enrollments
-      const enrollments = await new Parse.Query('CourseEnrollment')
-        .where('course', '==', courseId)
-        .find({ useMasterKey: true });
-      
-      let completedCount = 0;
-      let totalGrade = 0;
-      let gradeCount = 0;
-      
-      for (const enrollment of enrollments) {
-        if (enrollment.get('status') === 'Completed') {
-          completedCount++;
-        }
-        if (enrollment.get('grade')) {
-          totalGrade += enrollment.get('grade');
-          gradeCount++;
-        }
-      }
-      
-      // Get modules and lessons
-      const modules = await new Parse.Query('Module')
-        .where('course', '==', courseId)
-        .find({ useMasterKey: true });
-      
-      let totalLessons = 0;
-      for (const module of modules) {
-        const lessons = await new Parse.Query('Lesson')
-          .where('module', '==', module.id)
-          .find({ useMasterKey: true });
-        totalLessons += lessons.length;
-      }
-      
-      results.push({
-        courseId: courseId,
-        courseTitle: course.get('title'),
-        instructorName: course.get('instructor').get('name'),
-        category: course.get('category'),
-        difficultyLevel: course.get('difficultyLevel'),
-        enrolledStudents: enrollments.length,
-        completed: completedCount,
-        numModules: modules.length,
-        numLessons: totalLessons,
-        avgStudentGrade: gradeCount > 0 ? (totalGrade / gradeCount).toFixed(2) : null,
-        completionRate: enrollments.length > 0 ? 
-          ((completedCount / enrollments.length) * 100).toFixed(2) : 0
-      });
+    if (!courseId) {
+      throw new Parse.Error(Parse.Error.INVALID_QUERY, 'courseId is required');
     }
     
-    return results.sort((a, b) => b.enrolledStudents - a.enrolledStudents);
+    const course = await new Parse.Query('Course')
+      .include('instructor')
+      .get(courseId, {useMasterKey: true});
+    
+    if (!course) {
+      throw new Parse.Error(Parse.Error.OBJECT_NOT_FOUND, 'Course not found');
+    }
+    
+    const modules = await new Parse.Query('Module')
+      .equalTo('course', course)
+      .find({useMasterKey: true});
+    
+    let lessons = [];
+    let homeworks = [];
+    let totalLessons = 0;
+    let totalHomeworks = 0;
+    let totalQuizzes = 0;
+    
+    for (const module of modules) {
+      const moduleLessons = await new Parse.Query('Lesson')
+        .equalTo('module', module)
+        .find({useMasterKey: true});
+      
+      lessons = lessons.concat(moduleLessons);
+      totalLessons += moduleLessons.length;
+      
+      for (const lesson of moduleLessons) {
+        const lessonHW = await new Parse.Query('Homework')
+          .equalTo('lesson', lesson)
+          .find({useMasterKey: true});
+        
+        homeworks = homeworks.concat(lessonHW);
+        totalHomeworks += lessonHW.length;
+        
+        const quizzes = await new Parse.Query('Quiz')
+          .equalTo('lesson', lesson)
+          .count({useMasterKey: true});
+        
+        totalQuizzes += quizzes;
+      }
+    }
+    
+    const enrollments = await new Parse.Query('CourseEnrollment')
+      .equalTo('course', course)
+      .include('student')
+      .find({useMasterKey: true});
+    
+    let completedStudents = 0;
+    let totalGrade = 0;
+    
+    for (const enrollment of enrollments) {
+      const student = enrollment.get('student');
+      
+      let completedLessons = 0;
+      for (const lesson of lessons) {
+        const progress = await new Parse.Query('LessonProgress')
+          .equalTo('student', student)
+          .equalTo('lesson', lesson)
+          .first({useMasterKey: true});
+        
+        if (progress && progress.get('completion_percentage') >= 100) {
+          completedLessons++;
+        }
+      }
+      
+      if (completedLessons === totalLessons) {
+        completedStudents++;
+      }
+      
+      // Итоговая оценка
+      const grade = enrollment.get('grade');
+      if (grade) {
+        totalGrade += parseFloat(grade);
+      }
+    }
+    
+    const instructor = course.get('instructor');
+    const completionRate = enrollments.length > 0
+      ? (completedStudents / enrollments.length * 100).toFixed(2)
+      : 0;
+    
+    const averageGrade = enrollments.length > 0
+      ? (totalGrade / enrollments.length).toFixed(2)
+      : 0;
+    
+    return {
+      status: 'success',
+      courseId: course.id,
+      title: course.get('title'),
+      description: course.get('description'),
+      instructor: {
+        id: instructor.id,
+        email: instructor.get('user').get('email'),
+        name: instructor.get('user').get('first_name') + ' ' + instructor.get('user').get('last_name')
+      },
+      statistics: {
+        enrolledStudents: enrollments.length,
+        completedStudents: completedStudents,
+        completionRate: parseFloat(completionRate),
+        modules: modules.length,
+        lessons: totalLessons,
+        homeworks: totalHomeworks,
+        quizzes: totalQuizzes,
+        averageGrade: parseFloat(averageGrade),
+        difficulty: course.get('difficulty_level'),
+        status: course.get('status'),
+        createdAt: course.createdAt
+      }
+    };
   } catch (error) {
-    throw new Error('Failed to get course analytics: ' + error.message);
+    console.error('Ошибка в getCourseAnalytics:', error);
+    throw new Parse.Error(Parse.Error.SCRIPT_FAILED, error.message);
   }
-});
-
-// ============================================================
-// HELPER FUNCTION: Initialize Parse
-// ============================================================
-Parse.Cloud.beforeSave('ClassName', async (request) => {
-  // Update timestamps
-  const object = request.object;
-  if (!object.createdAt) {
-    object.set('createdAt', new Date());
-  }
-  object.set('updatedAt', new Date());
 });
