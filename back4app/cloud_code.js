@@ -472,3 +472,114 @@ Parse.Cloud.define('getCourseAnalytics', async (request) => {
     throw new Parse.Error(Parse.Error.SCRIPT_FAILED, error.message);
   }
 });
+
+// -----------------------------
+// ToDo App Cloud Code
+// -----------------------------
+
+// Helper: fetch a Todo by id and ensure it belongs to the requesting user
+async function _getTodoByIdForUser(todoId, user) {
+  const q = new Parse.Query('Todo');
+  q.equalTo('objectId', todoId);
+  q.equalTo('owner', user);
+  const todo = await q.first({useMasterKey: true});
+  if (!todo) throw new Parse.Error(Parse.Error.OBJECT_NOT_FOUND, 'Todo not found');
+  return todo;
+}
+
+// Validate and set defaults before saving a Todo
+Parse.Cloud.beforeSave('Todo', async (req) => {
+  const todo = req.object;
+  const user = req.user;
+
+  if (!todo.get('title') || todo.get('title').trim().length === 0) {
+    throw new Parse.Error(Parse.Error.VALIDATION_ERROR, 'Title is required');
+  }
+
+  // On create, set owner + ACL and defaults
+  if (todo.isNew()) {
+    if (user) {
+      todo.set('owner', user);
+      const acl = new Parse.ACL(user);
+      todo.setACL(acl);
+    }
+    if (todo.get('done') === undefined) todo.set('done', false);
+    if (todo.get('priority') === undefined) todo.set('priority', 1);
+  }
+});
+
+// Create a new Todo
+Parse.Cloud.define('createTodo', async (req) => {
+  const user = req.user;
+  if (!user) throw new Parse.Error(Parse.Error.INVALID_SESSION_TOKEN, 'Authentication required');
+
+  const Todo = Parse.Object.extend('Todo');
+  const todo = new Todo();
+  todo.set('title', req.params.title);
+  todo.set('done', !!req.params.done);
+  if (req.params.dueDate) todo.set('dueDate', new Date(req.params.dueDate));
+  if (req.params.priority !== undefined) todo.set('priority', req.params.priority);
+  todo.set('owner', user);
+
+  const acl = new Parse.ACL(user);
+  todo.setACL(acl);
+
+  await todo.save(null, {useMasterKey: true});
+  return {
+    id: todo.id,
+    title: todo.get('title'),
+    done: todo.get('done'),
+    dueDate: todo.get('dueDate'),
+    priority: todo.get('priority')
+  };
+});
+
+// List Todos for current user (optional filter by done)
+Parse.Cloud.define('getTodos', async (req) => {
+  const user = req.user;
+  if (!user) throw new Parse.Error(Parse.Error.INVALID_SESSION_TOKEN, 'Authentication required');
+
+  const q = new Parse.Query('Todo');
+  q.equalTo('owner', user);
+  if (req.params.done !== undefined) q.equalTo('done', req.params.done);
+  q.ascending('order');
+
+  const results = await q.find({useMasterKey: true});
+  return results.map(t => ({ id: t.id, title: t.get('title'), done: t.get('done'), dueDate: t.get('dueDate'), priority: t.get('priority') }));
+});
+
+// Update a Todo (title, done, dueDate, priority)
+Parse.Cloud.define('updateTodo', async (req) => {
+  const user = req.user;
+  if (!user) throw new Parse.Error(Parse.Error.INVALID_SESSION_TOKEN, 'Authentication required');
+
+  const todo = await _getTodoByIdForUser(req.params.todoId, user);
+  if (req.params.title !== undefined) todo.set('title', req.params.title);
+  if (req.params.done !== undefined) todo.set('done', req.params.done);
+  if (req.params.dueDate !== undefined) todo.set('dueDate', new Date(req.params.dueDate));
+  if (req.params.priority !== undefined) todo.set('priority', req.params.priority);
+
+  await todo.save(null, {useMasterKey: true});
+  return { id: todo.id, title: todo.get('title'), done: todo.get('done'), dueDate: todo.get('dueDate'), priority: todo.get('priority') };
+});
+
+// Delete a Todo
+Parse.Cloud.define('deleteTodo', async (req) => {
+  const user = req.user;
+  if (!user) throw new Parse.Error(Parse.Error.INVALID_SESSION_TOKEN, 'Authentication required');
+
+  const todo = await _getTodoByIdForUser(req.params.todoId, user);
+  await todo.destroy({useMasterKey: true});
+  return { success: true };
+});
+
+// Toggle done state
+Parse.Cloud.define('toggleTodo', async (req) => {
+  const user = req.user;
+  if (!user) throw new Parse.Error(Parse.Error.INVALID_SESSION_TOKEN, 'Authentication required');
+
+  const todo = await _getTodoByIdForUser(req.params.todoId, user);
+  todo.set('done', !todo.get('done'));
+  await todo.save(null, {useMasterKey: true});
+  return { id: todo.id, done: todo.get('done') };
+});

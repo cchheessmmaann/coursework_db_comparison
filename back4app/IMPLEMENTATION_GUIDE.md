@@ -216,6 +216,59 @@ object.setACL(acl);
 - Data costs increase with scale
 - Learning curve for Cloud Code
 
+## ToDo App Example
+
+This repository includes a minimal ToDo app example that demonstrates how to model data, expose Cloud Functions, and provide a small web frontend hosted via Back4App (or any static host).
+
+### Data model
+- **Todo**
+  - `title` (String) — required
+  - `done` (Boolean) — default `false`
+  - `dueDate` (Date) — optional
+  - `priority` (Number) — default `1`
+  - `order` (Number) — optional (for ordering)
+  - `owner` (Pointer -> _User) — set automatically on create
+
+> Security: A `beforeSave` Cloud trigger sets the `owner` and applies an ACL that allows only the owner to read/write their todos.
+
+### Cloud Functions (added to `cloud_code.js`)
+- `createTodo` — creates a Todo for the authenticated user
+- `getTodos` — lists the current user's todos (supports `done` filter)
+- `updateTodo` — updates fields on a Todo (owner-only)
+- `deleteTodo` — deletes a Todo (owner-only)
+- `toggleTodo` — toggles the `done` state (owner-only)
+
+All functions require authentication (valid session token) and use `useMasterKey` internally for secure ownership checks.
+
+### Example REST call (create)
+```bash
+curl -X POST https://parseapi.back4app.com/parse/functions/createTodo \
+  -H "X-Parse-Application-Id: YOUR_APP_ID" \
+  -H "X-Parse-REST-API-Key: YOUR_REST_KEY" \
+  -H "X-Parse-Session-Token: USER_SESSION_TOKEN" \
+  -H "Content-Type: application/json" \
+  -d '{"title":"Buy milk","dueDate":"2026-02-05T12:00:00Z"}'
+```
+
+### Frontend (static web)
+A simple single-page app is provided in `back4app/web_todo/`:
+- `index.html` — UI and Parse JS SDK include
+- `app.js` — initialization (`Parse.initialize(APP_ID, JS_KEY)` + `Parse.serverURL`) and CRUD interactions
+- `style.css` — minimal styling
+
+To use the front-end locally, open `index.html` after replacing placeholders in `app.js` with your **Application ID**, **JavaScript Key**, and server URL. To host via Back4App, upload the files through Web Hosting or serve them from any static host.
+
+### Deployment
+1. Deploy Cloud Code with:
+   ```bash
+   npm install -g back4app-cli
+   back4app login
+   back4app deploy
+   ```
+2. Upload `web_todo` directory to Back4App Web Hosting or any static hosting provider and configure keys in `app.js`.
+
+---
+
 ## Key Differences from SQL
 
 | Feature | SQL | Back4app |

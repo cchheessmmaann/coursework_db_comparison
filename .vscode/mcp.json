@@ -1,0 +1,15 @@
+{
+	"servers": {
+		"back4app": {
+			"command": "npx",
+			"args": [
+				"-y",
+				"@back4app/mcp-server-back4app@latest",
+				"--account-key",
+				"1hV37q7NvH4918UDr5CGwdkwzXFL7EuDBfNEmpoL"
+			],
+			"type": "stdio"
+		}
+	},
+	"inputs": []
+}

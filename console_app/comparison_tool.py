@@ -129,7 +129,7 @@ class SQLDatabase:
         JOIN courses c ON m.course_id = c.course_id
         LEFT JOIN homework_submissions hs ON h.homework_id = hs.homework_id
         LEFT JOIN homework_reviews hr ON hs.submission_id = hr.submission_id
-        GROUP BY h.homework_id, h.title, c.title
+        GROUP BY h.homework_id, h.title, c.title, c.course_id
         ORDER BY c.course_id, h.homework_id;
         """
         
@@ -204,7 +204,7 @@ class SQLDatabase:
 class Back4appDatabase:
     """Back4app BaaS platform operations"""
     
-    def __init__(self, server_url: str, app_id: str, api_key: str):
+    def __init__(self, server_url: str = 'https://parseapi.back4app.com', app_id: str = '55gGaliIiD2oXcJVYNjUx5dkZ0sucZVhrXVjQJxh', api_key: str = 'Hxpzg2KVJqJBkVSx1rY9udxXqqu5plzyDXGfdVsO'):
         """
         Initialize Back4app connection
         
@@ -419,7 +419,8 @@ class ComparisonAnalyzer:
             ratio = back4app_time / sql_time
             print(f"  Speed ratio: Back4app is {ratio:.1f}x {'faster' if ratio < 1 else 'slower'}")
         
-        self.results[query_name.lower()] = {
+        key = query_name.replace(' ', '').lower()
+        self.results[key] = {
             'sql_time': sql_time,
             'back4app_time': back4app_time,
             'sql_count': sql_count,
@@ -457,13 +458,19 @@ def main():
         print(f"Cannot continue without SQL database connection: {e}")
         return
     
-    # Configure Back4app connection
-    # These should be your actual Back4app credentials
+    # Load Back4app credentials from .env (recommended) or environment
+    from dotenv import load_dotenv
+    import os
+    load_dotenv()
+
     back4app_config = {
-        'server_url': 'https://parseapi.back4app.com',
-        'app_id': 'YOUR_APP_ID',
-        'api_key': 'YOUR_API_KEY'
+        'server_url': os.getenv('BACK4APP_SERVER_URL', 'https://parseapi.back4app.com'),
+        'app_id': os.getenv('BACK4APP_APP_ID'),
+        'api_key': os.getenv('BACK4APP_MASTER_KEY')  # you can also set a REST API key
     }
+
+    if not back4app_config['app_id'] or not back4app_config['api_key']:
+        print('⚠ Back4app credentials not found. Please set BACK4APP_APP_ID and BACK4APP_MASTER_KEY in .env or env vars.')
     
     try:
         back4app = Back4appDatabase(**back4app_config)

@@ -1,0 +1,41 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>ToDo App (Back4App)</title>
+  <link rel="stylesheet" href="style.css" />
+</head>
+<body>
+  <div class="container">
+    <h1>ToDo App ✅</h1>
+
+    <div id="auth">
+      <input id="username" placeholder="username" />
+      <input id="password" placeholder="password" type="password" />
+      <button id="signupBtn">Sign Up</button>
+      <button id="loginBtn">Log In</button>
+      <button id="logoutBtn" style="display:none">Log Out</button>
+      <div id="userInfo"></div>
+    </div>
+
+    <hr />
+
+    <div id="todoForm" style="display:none">
+      <input id="title" placeholder="New todo title" />
+      <input id="dueDate" type="date" />
+      <select id="priority">
+        <option value="1">Low</option>
+        <option value="2">Normal</option>
+        <option value="3">High</option>
+      </select>
+      <button id="addBtn">Add</button>
+    </div>
+
+    <ul id="todoList"></ul>
+  </div>
+
+  <script src="https://unpkg.com/parse/dist/parse.min.js"></script>
+  <script src="app.js"></script>
+</body>
+</html>
