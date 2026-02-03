@@ -1,10 +1,6 @@
 // Replace these placeholder values with your Back4App credentials
-const APP_ID = 'YOUR_APP_ID';
-const JS_KEY = 'YOUR_JAVASCRIPT_KEY';
-const SERVER_URL = 'https://parseapi.back4app.com';
-
-Parse.initialize(APP_ID, JS_KEY);
-Parse.serverURL = SERVER_URL;
+Parse.initialize("55gGaliIiD2oXcJVYNjUx5dkZ0sucZVhrXVjQJxh", "2VI9D0ezzzvwzkqrI9GIIpN4Mfd07v5M0qxT9oaz"); //PASTE HERE YOUR Back4App APPLICATION ID AND YOUR JavaScript KEY
+  Parse.serverURL = "https://parseapi.back4app.com/";
 
 // Simple auth (signup/login for demo purposes)
 const signupBtn = document.getElementById('signupBtn');
